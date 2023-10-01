@@ -1,7 +1,14 @@
 import "./globals.css";
+import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Normalized coverage (ROC) plot",
+  description:
+    "Demonstration of normalized coverage (ROC) plots for Machine Learning Paradigms",
+};
 
 export default function RootLayout({
   children,
