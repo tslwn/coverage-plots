@@ -24,6 +24,11 @@ const columnNames = ["Model", "True positive rate", "False positive rate"];
 // TODO: handle/disallow duplicate model names
 type Datum = { model: string; x: number; y: number };
 
+const defaults: Datum[] = [
+  { model: "always positive", x: 1, y: 1 },
+  { model: "always negative", x: 0, y: 0 },
+];
+
 const labelsStyle = {
   fontFamily: "Inter",
   fontSize: 12,
@@ -37,7 +42,7 @@ const axisStyle = {
     stroke: ({ tick }: { tick: number }) => tick !== 0 && "lightgray",
   },
   tickLabels: { fontFamily: "Inter", fontSize: 12, padding: 6 },
-};
+} as const;
 
 type DataKey = `${number}-${number}`;
 
@@ -45,19 +50,49 @@ function getDataKey(rowIndex: number, columnIndex: number): DataKey {
   return `${rowIndex}-${columnIndex}`;
 }
 
-function isValidValue(value: string) {
+function isValidValue(value: string): boolean {
   return parseFloat(value) >= 0 && parseFloat(value) <= 1;
 }
 
-function capitalize(value: string) {
+function capitalize(value: string): string {
   return value[0].toUpperCase() + value.slice(1);
 }
 
-export default function Home() {
+function round(value: number, decimals = 3): number {
+  return Number(
+    Math.round(
+      Number(value.toString() + "e" + decimals.toString())
+    ).toString() +
+      "e-" +
+      decimals.toString()
+  );
+}
+
+function list(values: string[]): string {
+  switch (values.length) {
+    case 0:
+      return "";
+    case 1:
+      return capitalize(values[0]);
+    case 2:
+      return capitalize(values[0]) + " and " + values[1];
+    default:
+      return (
+        values
+          .slice(0, -1)
+          .map((value, index) => (index === 0 ? capitalize(value) : value))
+          .join(", ") +
+        " and " +
+        values.slice(-1)
+      );
+  }
+}
+
+export default function Home(): JSX.Element {
   // TODO: show derivative measures
   const [cellData, setCellData] = React.useState<Record<DataKey, string>>({
     "0-0": "1",
-    "0-1": "0.8",
+    "0-1": "0.6",
     "0-2": "0.4",
     "1-0": "2",
     "1-1": "0.4",
@@ -123,14 +158,15 @@ export default function Home() {
   const dominatedPairs = getDominatedPairs(scatterData);
   const convexHull = getConvexHull(scatterData);
   const preferredPairs = getPreferredPairs(getConvexHull(scatterData));
+  const averageRecallPairs = getAverageRecallGroups(scatterData);
 
   return (
-    <div className="p-8">
-      <h1 className="mb-4 text-2xl">Normalized coverage (ROC) plot</h1>
-      <div className="flex gap-x-8">
+    <div className="p-6">
+      <h1 className="mb-3 text-2xl">Normalized coverage (ROC) plot</h1>
+      <div className="flex gap-x-16">
         <div className="flex flex-col gap-y-16">
           <div>
-            <h2 className="mb-4 text-xl">Models</h2>
+            <h2 className="mb-3 text-xl">Models</h2>
             {/* TODO: allow adding/removing rows */}
             <Table2
               numRows={numRows(cellData)}
@@ -146,61 +182,85 @@ export default function Home() {
             </Table2>
           </div>
           <div>
-            <h2 className="mb-4 text-xl">Which models are dominated?</h2>
-            <ul className="list-disc list-inside mb-4">
-              {dominatedPairs.map(([datum1, datum2], index) => (
-                <li key={index}>
-                  {datum2.model} is dominated by {datum1.model}
-                </li>
-              ))}
-            </ul>
-            <h2 className="mb-4 text-xl">
-              When do models have greater accuracy?
-            </h2>
-            <ul className="list-disc list-inside">
-              {preferredPairs.map(([datum1, datum2, slope], index) => (
-                <li key={index}>
-                  {capitalize(datum2.model)} is preferred to {datum1.model} when
-                  the class ratio ≥ {slope.toLocaleString()}
-                </li>
-              ))}
-            </ul>
+            <VictoryChart
+              domain={{ x: [0, 1], y: [0, 1] }}
+              height={500}
+              width={500}
+            >
+              <VictoryAxis
+                label="False positive rate"
+                tickValues={tickValues}
+                style={axisStyle}
+              />
+              <VictoryAxis
+                label="True positive rate"
+                tickValues={tickValues}
+                style={axisStyle}
+                dependentAxis
+              />
+              <VictoryLine
+                data={convexHull}
+                labels={({ datum }: { datum: Datum }) =>
+                  datum.x === 1 ? "Convex hull" : null
+                }
+                style={{
+                  data: { stroke: "gray", strokeWidth: 1 },
+                  labels: labelsStyle,
+                }}
+              />
+              <VictoryScatter
+                data={scatterData}
+                labels={({ datum }: { datum: Datum }) => datum.model}
+                style={{ labels: labelsStyle }}
+              />
+            </VictoryChart>
           </div>
         </div>
         <div>
-          <h2 className="text-xl">Plot</h2>
-          <VictoryChart
-            domain={{ x: [0, 1], y: [0, 1] }}
-            height={500}
-            width={500}
-          >
-            <VictoryAxis
-              label="False positive rate"
-              tickValues={tickValues}
-              style={axisStyle}
-            />
-            <VictoryAxis
-              label="True positive rate"
-              tickValues={tickValues}
-              style={axisStyle}
-              dependentAxis
-            />
-            <VictoryLine
-              data={convexHull}
-              labels={({ datum }: { datum: Datum }) =>
-                datum.x === 1 ? "Convex hull" : null
-              }
-              style={{
-                data: { stroke: "gray", strokeWidth: 1 },
-                labels: labelsStyle,
-              }}
-            />
-            <VictoryScatter
-              data={scatterData}
-              labels={({ datum }: { datum: Datum }) => datum.model}
-              style={{ labels: labelsStyle }}
-            />
-          </VictoryChart>
+          <div className="flex flex-col gap-y-6">
+            <div>
+              <h2 className="mb-3 text-xl">Which models are dominated?</h2>
+              <ul className="list-disc list-inside">
+                {dominatedPairs.length > 0
+                  ? dominatedPairs.map(([datum1, datum2], index) => (
+                      <li key={index}>
+                        {datum2.model} is dominated by {datum1.model}
+                      </li>
+                    ))
+                  : "No models are dominated."}
+              </ul>
+            </div>
+            <div>
+              <h2 className="mb-3 text-xl">
+                When do models have greater accuracy?
+              </h2>
+              <ul className="list-disc list-inside">
+                {preferredPairs.map(([datum1, datum2, slope], index) => (
+                  <li key={index}>
+                    {capitalize(datum2.model)} is preferred to {datum1.model}{" "}
+                    when the class ratio ≥ {slope.toLocaleString()}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h2 className="mb-3 text-xl">
+                Which models have the same average recall?
+              </h2>
+              <ul className="list-disc list-inside">
+                {averageRecallPairs.length > 0
+                  ? averageRecallPairs.map(
+                      ({ averageRecall, models }, index) => (
+                        <li key={index}>
+                          {list(models)} have average recall{" "}
+                          {averageRecall.toLocaleString()}
+                        </li>
+                      )
+                    )
+                  : "No models have the same average recall."}
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -261,10 +321,7 @@ function getDominatedPairs(scatterData: Datum[]): [Datum, Datum][] {
 
 function getConvexHull(scatterData: Datum[]): Datum[] {
   const dominatedPairs = getDominatedPairs(scatterData);
-  return [
-    { model: "always positive", x: 1, y: 1 },
-    { model: "always negative", x: 0, y: 0 },
-  ]
+  return defaults
     .concat(
       scatterData.filter(
         (datum) => !dominatedPairs.some(([_, datum2]) => datum === datum2)
@@ -283,4 +340,25 @@ function getPreferredPairs(convexHull: Datum[]): [Datum, Datum, number][] {
     results.push([datum1, datum2, slope]);
   }
   return results;
+}
+
+function getAverageRecallGroups(
+  scatterData: Datum[]
+): { averageRecall: number; models: string[] }[] {
+  const averageRecalls = scatterData.map((datum) => ({
+    model: datum.model,
+    averageRecall: round((datum.y + (1 - datum.x)) / 2),
+  }));
+  const results: { averageRecall: number; models: string[] }[] = [];
+  for (const { model, averageRecall } of averageRecalls) {
+    const result = results.find(
+      (result) => result.averageRecall === averageRecall
+    );
+    if (result !== undefined) {
+      result.models.push(model);
+    } else {
+      results.push({ averageRecall, models: [model] });
+    }
+  }
+  return results.filter((result) => result.models.length > 1);
 }
