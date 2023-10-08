@@ -103,6 +103,19 @@ export function pairs(data: Datum[]): [Datum, Datum][] {
   return result;
 }
 
+function unique(data: Datum[]): Datum[] {
+  const result: Datum[] = [];
+  for (const datum1 of data) {
+    const datum2 = result.find(
+      (datum) => datum1.x === datum.x && datum1.y === datum.y
+    );
+    if (datum2 === undefined) {
+      result.push(datum1);
+    }
+  }
+  return result;
+}
+
 function isDominated(datum1: Datum, datum2: Datum): boolean {
   return datum1.x <= datum2.x && datum1.y >= datum2.y;
 }
@@ -115,9 +128,11 @@ export function getDominatedPairs(data: Datum[]): [Datum, Datum][] {
 
 export function getConvexHull(data: Datum[]): Datum[] {
   const dominatedPairs = getDominatedPairs(data);
-  return DEFAULT_DATA.concat(
-    data.filter(
-      (datum) => !dominatedPairs.some(([_, datum2]) => datum === datum2)
+  return unique(
+    DEFAULT_DATA.concat(
+      data.filter(
+        (datum) => !dominatedPairs.some(([_, datum2]) => datum === datum2)
+      )
     )
   ).sort((a, b) => a.x - b.x);
 }
